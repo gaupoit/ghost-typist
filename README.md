@@ -23,11 +23,21 @@ The pane opens on its own when the agent starts writing, on a terminal at least
 | --- | --- |
 | `/typist` | Open the pane |
 | `/typist on` / `off` | Turn typing on or off for this session |
+| `/typist mode hacker` | Hacker Typer mode: you type it (see below) |
+| `/typist mode watch` | Back to typing by itself |
 | `/typist speed 140` | Base speed in words per minute |
 | `/typist sound clicky` | `clicky`, `thock` or `off` |
 | `/typist status` | Show the current settings |
 
-Defaults are in `/config` (speed, sound, which tools to type, auto-open).
+Defaults are in `/config` (mode, speed, sound, which tools to type, auto-open).
+
+## Hacker Typer mode
+
+`/typist mode hacker` opens the pane with the keyboard in it. Every key you press types
+the next 3 to 5 characters of the agent's code (indentation comes for free). Stop
+pressing and the code waits for you. When the agent starts its next call, the one you
+were on finishes by itself, so you never fall behind. Esc returns to the prompt; click
+the pane or press ctrl+x tab to come back.
 
 ## How it works
 
@@ -35,7 +45,7 @@ Defaults are in `/config` (speed, sound, which tools to type, auto-open).
   the tool call's argument pieces (incomplete JSON) into a queue.
 - A small partial-JSON reader pulls out `content`, `new_string`, `new_source` or
   `command` as it arrives, escapes and all.
-- A 50 ms ticker types it at the chosen speed with human timing: pauses at newlines and
+- In watch mode, a 50 ms ticker types it at the chosen speed with human timing: pauses at newlines and
   brackets, near-free indentation, random variation. It speeds up when it falls more
   than ~600 characters behind, and once the model finishes the call it types the rest
   within 1.5 seconds, so it never lags far behind the agent.

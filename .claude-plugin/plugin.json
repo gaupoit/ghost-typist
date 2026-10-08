@@ -2,7 +2,9 @@
   "name": "ghost-typist",
   "version": "0.1.0",
   "description": "Types out the code the agent writes, live, in a side pane with keyboard sounds",
-  "author": { "name": "Paul" },
+  "author": {
+    "name": "Paul"
+  },
   "license": "MIT",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -16,7 +18,11 @@
       "type": "string",
       "title": "Keyboard sound",
       "description": "clicky, thock or off",
-      "options": ["clicky", "thock", "off"],
+      "options": [
+        "clicky",
+        "thock",
+        "off"
+      ],
       "default": "clicky"
     },
     "tools": {
@@ -30,6 +36,16 @@
       "title": "Open the pane automatically",
       "description": "Open the pane when the agent starts writing (needs a wide terminal)",
       "default": true
+    },
+    "mode": {
+      "type": "string",
+      "title": "Mode",
+      "description": "watch: it types by itself. hacker: each key you press in the pane types a few characters",
+      "options": [
+        "watch",
+        "hacker"
+      ],
+      "default": "watch"
     }
   }
 }
