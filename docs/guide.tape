@@ -57,15 +57,15 @@ Wait+Screen /hacker mode · \d+ WPM · 0%/
 Ctrl+X
 Tab
 Sleep 800ms
-Type@45ms "asdfjkl;asdfjkl;qwertyuiopzxcvbnmasdfjkl;"
+Type@45ms "asdfjklasdfjklqwertyuiopzxcvbnmasdfjkl"
 Sleep 400ms
 Type@40ms "hjklhjklqwerasdfzxcvuiopnmhjklasdfqwertyuiop"
 Sleep 300ms
 Type@40ms "fjdkslafjdkslaqpwoeiruty"
 Sleep 300ms
-Type@35ms "asdfjkl;asdfjkl;qwertyuiopzxcvbnmasdfjkl;hjklhjklqwerasdfzxcvuiopnm"
-Type@35ms "asdfjkl;asdfjkl;qwertyuiopzxcvbnmasdfjkl;hjklhjklqwerasdfzxcvuiopnm"
-Type@35ms "asdfjkl;asdfjkl;qwertyuiopzxcvbnmasdfjkl;hjklhjklqwerasdfzxcvuiopnm"
+Type@35ms "asdfjklasdfjklqwertyuiopzxcvbnmasdfjklhjklhjklqwerasdfzxcvuiopnm"
+Type@35ms "asdfjklasdfjklqwertyuiopzxcvbnmasdfjklhjklhjklqwerasdfzxcvuiopnm"
+Type@35ms "asdfjklasdfjklqwertyuiopzxcvbnmasdfjklhjklhjklqwerasdfzxcvuiopnm"
 Wait+Screen@30s /done · \d+ WPM · 100%/
 Sleep 3s
 Escape
@@ -82,7 +82,7 @@ Show
 
 # Outro card
 Type "# /typist                open the pane" Enter
-Type "# /typist mode hacker    every key you press types the code the agent writes" Enter
+Type "# /typist mode hacker    every letter you press types the code the agent writes" Enter
 Type "# /typist sound thock    clicky, thock or off" Enter
 Type "# github.com/gaupoit/ghost-typist" Enter
 Sleep 4s

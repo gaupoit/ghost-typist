@@ -7,7 +7,10 @@ import { advance, DEFAULT_PACE, measuredWpm, revealForKeys } from './typist'
 import type { Progress } from './typist'
 
 const PANE = 'ghost-typist'
-const KEYS = 'keys'
+// Hacker mode listens through hidden Buttons, one per letter and digit: a
+// text field would keep every key typed into it on screen.
+const KEY_PREFIX = 'key-'
+const HOTKEYS = 'abcdefghijklmnopqrstuvwxyz0123456789'.split('')
 const TICK_MS = 50
 const SOUNDS = ['clicky', 'thock', 'off'] as const
 type Sound = (typeof SOUNDS)[number]
@@ -224,7 +227,7 @@ export const register: Register = (on, options) => {
       if (value === 'hacker') {
         // Asked for, so the pane may take the keyboard.
         await $.ui.open({ id: PANE, title: 'Ghost Typist', focus: true })
-        return { text: 'Hacker mode: each key you press in the pane types the agent\'s code. Esc returns to the prompt.' }
+        return { text: 'Hacker mode: each letter key you press in the pane types the agent\'s code. Esc returns to the prompt.' }
       }
       return { text: 'Watch mode: Ghost Typist types by itself.' }
     }
@@ -290,13 +293,15 @@ export const register: Register = (on, options) => {
   })
 
   // Hacker mode: every edit of the pane's key field is a key press.
-  // Every edit of the key field is one key. Answered here: the field has
-  // no onInput handler for the chain to reach.
-  on('ui.input', { element: KEYS }, async ($, e, next) => {
-    if (e.plugin !== 'ghost-typist' || e.requestId !== PANE) return next(e)
+  // Answered here: each key redraws the pane, so by the time the press
+  // would reach its Button the handler it was drawn with is gone.
+  on('ui.press', async ($, e, next) => {
+    if (e.plugin !== 'ghost-typist' || e.requestId !== PANE || !e.element.startsWith(KEY_PREFIX)) {
+      return next(e)
+    }
     await pressKeys($, 1)
 
-    return { element: e.element, value: e.value }
+    return { element: e.element }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
@@ -305,18 +310,20 @@ export const register: Register = (on, options) => {
     const job = await read($, jobAtom)
     const queued = await read($, queuedAtom)
     const { mode } = settingsOf(await read($, settingsAtom))
-    // Surfaces without a text field (mobile) stay in watch mode.
-    const Input = mode === 'hacker' && 'Input' in elements ? elements.Input : undefined
+    // Surfaces without buttons stay in watch mode.
+    const Button = mode === 'hacker' && 'Button' in elements ? elements.Button : undefined
     const keyField =
-      Input === undefined ? null : (
-        <Input
-          key={KEYS}
-          value=""
-          placeholder={e.props.isFocused ? 'mash any key…' : 'focus the pane (click, or ctrl+x tab) and type'}
-          submitLabel="type"
-          autoFocus
-          onSubmit={() => undefined}
-        />
+      Button === undefined ? null : (
+        <Box flexDirection="column">
+          <Text dimColor>
+            {e.props.isFocused ? 'mash any letter key…' : 'focus the pane (click, or ctrl+x tab) and mash letters'}
+          </Text>
+          <Box display="none">
+            {HOTKEYS.map(ch => (
+              <Button key={`${KEY_PREFIX}${ch}`} hotkey={ch} label={ch} onPress={() => undefined} />
+            ))}
+          </Box>
+        </Box>
       )
 
     if (job === null) {
@@ -360,7 +367,7 @@ export const register: Register = (on, options) => {
           startLine={job.path !== undefined && job.tool === 'Write' ? first + 1 : undefined}
         />
         <Text dimColor>
-          {isTyping ? (Input === undefined ? 'typing' : 'hacker mode') : 'done'} · {job.wpm} WPM ·{' '}
+          {isTyping ? (Button === undefined ? 'typing' : 'hacker mode') : 'done'} · {job.wpm} WPM ·{' '}
           {pct}%{queued > 0 ? ` · ${queued} queued` : ''}
         </Text>
         {keyField}
