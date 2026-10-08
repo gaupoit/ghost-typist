@@ -51,8 +51,6 @@ let ticker: Timer | undefined
 let isTicking = false
 let sound: AbortController | undefined
 let soundOff: Timer | undefined
-// Length of the key field's text at the last edit, to count keys in a paste.
-let lastFieldLength = 0
 let hasOpened = false
 
 const settingsOf = (s: GhostSettings) => ({
@@ -292,15 +290,13 @@ export const register: Register = (on, options) => {
   })
 
   // Hacker mode: every edit of the pane's key field is a key press.
+  // Every edit of the key field is one key. Answered here: the field has
+  // no onInput handler for the chain to reach.
   on('ui.input', { element: KEYS }, async ($, e, next) => {
-    if (e.plugin === 'ghost-typist' && e.requestId === PANE) {
-      const length = e.value.length
-      const presses = e.kind === 'change' && length > lastFieldLength ? length - lastFieldLength : 1
-      lastFieldLength = e.kind === 'submit' ? 0 : length
-      await pressKeys($, presses)
-    }
+    if (e.plugin !== 'ghost-typist' || e.requestId !== PANE) return next(e)
+    await pressKeys($, 1)
 
-    return next(e)
+    return { element: e.element, value: e.value }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

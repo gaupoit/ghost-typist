@@ -8,6 +8,10 @@ pane at a human pace, with a cursor and keyboard sounds.
 
 It only shows things: the agent never waits for the typing.
 
+![Ghost Typist guide: watch mode, then hacker mode](docs/guide.gif)
+
+Full-resolution video: [docs/guide.mp4](docs/guide.mp4). The recording is silent; the keyboard sounds play in your terminal.
+
 ## Install
 
 ```
@@ -48,7 +52,7 @@ the pane or press ctrl+x tab to come back.
 - In watch mode, a 50 ms ticker types it at the chosen speed with human timing: pauses at newlines and
   brackets, near-free indentation, random variation. It speeds up when it falls more
   than ~600 characters behind, and once the model finishes the call it types the rest
-  within 1.5 seconds, so it never lags far behind the agent.
+  within 8 seconds, so it never lags far behind the agent.
 - Sound is one looped clip, started and stopped with the typing (macOS `afplay`; Linux
   terminals stay silent).
 
@@ -62,7 +66,7 @@ claude plugin validate .
 claude plugin test .
 ```
 
-The clips in `sounds/` are synthesised (`scripts/gen_sounds.py`).
+The clips in `sounds/` are synthesised (`scripts/gen_sounds.py`). The guide video is recorded with [VHS](https://github.com/charmbracelet/vhs): `vhs docs/guide.tape`.
 
 ## License
 
