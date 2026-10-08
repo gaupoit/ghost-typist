@@ -1,0 +1,35 @@
+{
+  "name": "ghost-typist",
+  "version": "0.1.0",
+  "description": "Types out the code the agent writes, live, in a side pane with keyboard sounds",
+  "author": { "name": "Paul" },
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "wpm": {
+      "type": "number",
+      "title": "Typing speed (WPM)",
+      "description": "Base typing speed; it speeds up when it falls behind the model",
+      "default": 110
+    },
+    "sound": {
+      "type": "string",
+      "title": "Keyboard sound",
+      "description": "clicky, thock or off",
+      "options": ["clicky", "thock", "off"],
+      "default": "clicky"
+    },
+    "tools": {
+      "type": "string",
+      "title": "Tools to type",
+      "description": "Comma-separated tool names",
+      "default": "Write,Edit,MultiEdit,NotebookEdit,Bash"
+    },
+    "autoOpen": {
+      "type": "boolean",
+      "title": "Open the pane automatically",
+      "description": "Open the pane when the agent starts writing (needs a wide terminal)",
+      "default": true
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "ghost-typist",
+  "description": "Ghost Typist: watch the agent's code typed out live, with keyboard sounds",
+  "owner": {
+    "name": "Paul"
+  },
+  "plugins": [
+    {
+      "name": "ghost-typist",
+      "source": "./",
+      "description": "Types out the code the agent writes, live, in a side pane with keyboard sounds"
+    }
+  ]
+}
