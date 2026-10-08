@@ -9,7 +9,7 @@ export type Pace = {
   finishWithinMs: number
 }
 
-export const DEFAULT_PACE: Pace = { wpm: 110, maxLagChars: 600, finishWithinMs: 1500 }
+export const DEFAULT_PACE: Pace = { wpm: 110, maxLagChars: 600, finishWithinMs: 8000 }
 
 // Cost of one character, in units of a plain keystroke.
 export const charCost = (ch: string, prev: string | undefined, rand: number): number => {
