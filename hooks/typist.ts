@@ -70,3 +70,22 @@ export const advance = (
 // Words per minute actually reached, for the footer.
 export const measuredWpm = (chars: number, ms: number): number =>
   ms <= 0 ? 0 : Math.round(chars / 5 / (ms / 60_000))
+
+// Hacker Typer mode: each key the person presses reveals a few characters,
+// and indentation after a newline comes along for free.
+export const revealForKeys = (
+  text: string,
+  shown: number,
+  presses: number,
+  random: () => number,
+): number => {
+  let next = shown
+  for (let i = 0; i < presses && next < text.length; i += 1) {
+    next += 3 + Math.floor(random() * 3)
+    if (text[next - 1] === '\n') {
+      while (next < text.length && /[ \t]/.test(text[next]!)) next += 1
+    }
+  }
+
+  return Math.min(next, text.length)
+}
