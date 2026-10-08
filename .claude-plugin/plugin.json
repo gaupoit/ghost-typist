@@ -1,6 +1,6 @@
 {
   "name": "ghost-typist",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Types out the code the agent writes, live, in a side pane with keyboard sounds",
   "author": {
     "name": "Paul"
@@ -40,7 +40,7 @@
     "mode": {
       "type": "string",
       "title": "Mode",
-      "description": "watch: it types by itself. hacker: each key you press in the pane types a few characters",
+      "description": "watch: it types by itself. hacker: each letter key you press in the pane types a few characters",
       "options": [
         "watch",
         "hacker"

@@ -48,7 +48,7 @@ test('types out a Write call streamed by the model', async ($, on) => {
   expect(seen[0]).toBe('tool')
   expect(seen.at(-1)).toBe('stop')
 
-  await clock.advance(5000)
+  await clock.advance(10_000)
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ type: 'Text', text: '/src/hello.ts' })).toBeDefined()
@@ -65,13 +65,12 @@ test('hacker mode waits for keys, then types a few characters per key', { option
   }
 
   // Time alone types nothing in hacker mode.
-  await clock.advance(5000)
+  await clock.advance(10_000)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /hacker mode · \d+ WPM · 0%/ })).toBeDefined()
 
-  for (let i = 0; i < 3; i += 1) {
-    await ui.input({ key: 'keys', text: 'x'.repeat(i + 1), kind: 'change' })
-  }
+  const typeKey = (ch: string) => ui.press({ key: `key-${ch}` })
+  for (const ch of 'asd') await typeKey(ch)
   await clock.advance(100)
   const footer = await ui.find({ type: 'Text', text: /hacker mode · \d+ WPM · \d+%/ })
   const pct = Number(/(\d+)%/.exec(footer?.text ?? '')?.[1])
@@ -80,7 +79,7 @@ test('hacker mode waits for keys, then types a few characters per key', { option
   expect(pct).toBeLessThanOrEqual(52)
 
   // Enough keys finish the file.
-  for (let i = 0; i < 20; i += 1) await ui.input({ key: 'keys', text: 'x', kind: 'submit' })
+  for (let i = 0; i < 20; i += 1) await typeKey('f')
   await clock.advance(100)
   expect(await ui.find({ type: 'Text', text: /done · \d+ WPM · 100%/ })).toBeDefined()
   await ui.unmount()
