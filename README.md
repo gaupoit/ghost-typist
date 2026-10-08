@@ -37,8 +37,8 @@ Defaults are in `/config` (mode, speed, sound, which tools to type, auto-open).
 
 ## Hacker Typer mode
 
-`/typist mode hacker` opens the pane with the keyboard in it. Every key you press types
-the next 3 to 5 characters of the agent's code (indentation comes for free). Stop
+`/typist mode hacker` opens the pane with the keyboard in it. Every letter or digit key
+you press types the next 3 to 5 characters of the agent's code (indentation comes for free). Stop
 pressing and the code waits for you. When the agent starts its next call, the one you
 were on finishes by itself, so you never fall behind. Esc returns to the prompt; click
 the pane or press ctrl+x tab to come back.

@@ -40,7 +40,7 @@
     "mode": {
       "type": "string",
       "title": "Mode",
-      "description": "watch: it types by itself. hacker: each key you press in the pane types a few characters",
+      "description": "watch: it types by itself. hacker: each letter key you press in the pane types a few characters",
       "options": [
         "watch",
         "hacker"
