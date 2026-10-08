@@ -3,13 +3,18 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { GhostJob, GhostSettings } from '../types'
 import { readToolText, TOOL_FIELDS } from './extract'
-import { advance, DEFAULT_PACE, measuredWpm } from './typist'
+import { advance, DEFAULT_PACE, measuredWpm, revealForKeys } from './typist'
 import type { Progress } from './typist'
 
 const PANE = 'ghost-typist'
+const KEYS = 'keys'
 const TICK_MS = 50
 const SOUNDS = ['clicky', 'thock', 'off'] as const
 type Sound = (typeof SOUNDS)[number]
+const MODES = ['watch', 'hacker'] as const
+type Mode = (typeof MODES)[number]
+// In hacker mode the clicks stop this long after the last key.
+const KEY_SOUND_MS = 250
 
 const jobAtom = atom({ plugin: 'ghost-typist', key: 'job' } as const, null)
 const queuedAtom = atom({ plugin: 'ghost-typist', key: 'queued' } as const, 0)
@@ -32,11 +37,12 @@ type Pending = {
 
 const basename = (path: string) => path.split('/').at(-1) ?? path
 
-type Defaults = { wpm: number; sound: Sound; tools: Set<string>; autoOpen: boolean }
+type Defaults = { wpm: number; sound: Sound; mode: Mode; tools: Set<string>; autoOpen: boolean }
 
 let defaults: Defaults = {
   wpm: DEFAULT_PACE.wpm,
   sound: 'clicky',
+  mode: 'watch',
   tools: new Set(Object.keys(TOOL_FIELDS)),
   autoOpen: true,
 }
@@ -44,12 +50,16 @@ const queue: Pending[] = []
 let ticker: Timer | undefined
 let isTicking = false
 let sound: AbortController | undefined
+let soundOff: Timer | undefined
+// Length of the key field's text at the last edit, to count keys in a paste.
+let lastFieldLength = 0
 let hasOpened = false
 
 const settingsOf = (s: GhostSettings) => ({
   isEnabled: s.isEnabled,
   wpm: s.wpm ?? defaults.wpm,
   sound: s.sound ?? defaults.sound,
+  mode: s.mode ?? defaults.mode,
 })
 
 function setSound($: EngineInterface, isTyping: boolean, kind: Sound) {
@@ -71,31 +81,21 @@ function stop($: EngineInterface) {
   $.ui.status(undefined)
 }
 
-async function tick($: EngineInterface) {
-  const job = queue[0]
-  if (job === undefined) return stop($)
+function parse(job: Pending) {
+  if (job.raw.length === job.parsedLength) return
+  const read = readToolText(job.tool, job.raw)
+  job.text = job.tool === 'Bash' ? `$ ${read.text}` : read.text
+  job.path = read.path ?? job.path
+  job.parsedLength = job.raw.length
+}
 
-  if (job.raw.length !== job.parsedLength) {
-    const read = readToolText(job.tool, job.raw)
-    job.text = job.tool === 'Bash' ? `$ ${read.text}` : read.text
-    job.path = read.path ?? job.path
-    job.parsedLength = job.raw.length
-  }
-
-  const settings = settingsOf(await read($, settingsAtom))
-  // A call waiting behind this one makes it finish sooner.
-  const pace = {
-    ...DEFAULT_PACE,
-    wpm: settings.wpm,
-    finishWithinMs: queue.length > 1 ? 500 : DEFAULT_PACE.finishWithinMs,
-  }
-  const before = job.progress.shown
-  job.progress = advance(job.text, job.progress, TICK_MS, job.isStreamDone, pace, Math.random)
-  if (job.progress.shown > before) job.typingMs += TICK_MS
-
+// Shows the job's progress, and moves on once it is fully typed.
+async function publish($: EngineInterface, job: Pending, mode: Mode) {
   const isFinished = job.isStreamDone && job.progress.shown >= job.text.length
-  setSound($, !isFinished && job.progress.shown < job.text.length, settings.sound)
-  $.ui.status(isFinished ? undefined : `⌨ typing ${job.path ? basename(job.path) : job.tool}`)
+  const name = job.path ? basename(job.path) : job.tool
+  $.ui.status(
+    isFinished ? undefined : mode === 'hacker' ? `⌨ hacker mode · type to write ${name}` : `⌨ typing ${name}`,
+  )
 
   const snapshot: GhostJob = {
     id: job.id,
@@ -110,10 +110,54 @@ async function tick($: EngineInterface) {
   await update($, queuedAtom, () => Math.max(0, queue.length - 1))
 
   // The last finished job stays on screen until the next one starts.
-  if (isFinished) {
+  if (isFinished && queue[0] === job) {
     queue.shift()
     if (queue.length === 0) stop($)
   }
+}
+
+async function tick($: EngineInterface) {
+  const job = queue[0]
+  if (job === undefined) return stop($)
+  parse(job)
+
+  const settings = settingsOf(await read($, settingsAtom))
+  // Hacker mode waits for keys, unless another call is waiting behind this one.
+  const isAuto = settings.mode === 'watch' || queue.length > 1
+  if (isAuto) {
+    const pace = {
+      ...DEFAULT_PACE,
+      wpm: settings.wpm,
+      finishWithinMs: queue.length > 1 ? 500 : DEFAULT_PACE.finishWithinMs,
+    }
+    const before = job.progress.shown
+    job.progress = advance(job.text, job.progress, TICK_MS, job.isStreamDone, pace, Math.random)
+    if (job.progress.shown > before) job.typingMs += TICK_MS
+  }
+  if (settings.mode === 'watch') {
+    setSound($, job.progress.shown < job.text.length, settings.sound)
+  }
+
+  await publish($, job, settings.mode)
+}
+
+// Hacker mode: the person pressed `presses` keys in the pane.
+async function pressKeys($: EngineInterface, presses: number) {
+  const job = queue[0]
+  if (job === undefined) return
+  parse(job)
+  const settings = settingsOf(await read($, settingsAtom))
+
+  const before = job.progress.shown
+  job.progress = { ...job.progress, shown: revealForKeys(job.text, before, presses, Math.random) }
+  // Count about one keystroke's time per press, so the footer shows a real WPM.
+  job.typingMs += presses * 120
+
+  setSound($, job.progress.shown > before, settings.sound)
+  soundOff?.cancel()
+  soundOff = $.clock.after(KEY_SOUND_MS, () => setSound($, false, 'off'))
+
+  await publish($, job, settings.mode)
 }
 
 function ensureTicker($: EngineInterface) {
@@ -140,13 +184,14 @@ export const register: Register = (on, options) => {
         .map(t => t.trim())
         .filter(t => t in TOOL_FIELDS),
     ),
+    mode: (MODES.includes(options.mode as Mode) ? options.mode : 'watch') as Mode,
     autoOpen: options.autoOpen !== false,
   }
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'typist',
-      description: 'Ghost Typist: open the pane, or on | off | speed <wpm> | sound clicky|thock|off',
+      description: 'Ghost Typist: open the pane, or on | off | mode watch|hacker | speed <wpm> | sound clicky|thock|off',
     })
 
     return next(e)
@@ -173,6 +218,18 @@ export const register: Register = (on, options) => {
       await update($, settingsAtom, s => ({ ...s, wpm }))
       return { text: `Ghost Typist types at ${wpm} WPM.` }
     }
+    if (word === 'mode') {
+      if (!MODES.includes(value as Mode)) {
+        return { text: `Mode is watch or hacker (now ${current.mode}).` }
+      }
+      await update($, settingsAtom, s => ({ ...s, mode: value as Mode }))
+      if (value === 'hacker') {
+        // Asked for, so the pane may take the keyboard.
+        await $.ui.open({ id: PANE, title: 'Ghost Typist', focus: true })
+        return { text: 'Hacker mode: each key you press in the pane types the agent\'s code. Esc returns to the prompt.' }
+      }
+      return { text: 'Watch mode: Ghost Typist types by itself.' }
+    }
     if (word === 'sound') {
       if (!SOUNDS.includes(value as Sound)) {
         return { text: `Sound is one of ${SOUNDS.join(', ')} (now ${current.sound}).` }
@@ -183,7 +240,7 @@ export const register: Register = (on, options) => {
     }
 
     return {
-      text: `Ghost Typist is ${current.isEnabled ? 'on' : 'off'} · ${current.wpm} WPM · sound ${current.sound}. Usage: /typist [open | on | off | speed <wpm> | sound clicky|thock|off]`,
+      text: `Ghost Typist is ${current.isEnabled ? 'on' : 'off'} · ${current.mode} mode · ${current.wpm} WPM · sound ${current.sound}. Usage: /typist [open | on | off | mode watch|hacker | speed <wpm> | sound clicky|thock|off]`,
     }
   })
 
@@ -234,22 +291,50 @@ export const register: Register = (on, options) => {
     return await stream.result
   })
 
+  // Hacker mode: every edit of the pane's key field is a key press.
+  on('ui.input', { element: KEYS }, async ($, e, next) => {
+    if (e.plugin === 'ghost-typist' && e.requestId === PANE) {
+      const length = e.value.length
+      const presses = e.kind === 'change' && length > lastFieldLength ? length - lastFieldLength : 1
+      lastFieldLength = e.kind === 'submit' ? 0 : length
+      await pressKeys($, presses)
+    }
+
+    return next(e)
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Code } = $.ui.resolve(e)
+    const elements = $.ui.resolve(e)
+    const { Box, Text, Code } = elements
     const job = await read($, jobAtom)
     const queued = await read($, queuedAtom)
+    const { mode } = settingsOf(await read($, settingsAtom))
+    // Surfaces without a text field (mobile) stay in watch mode.
+    const Input = mode === 'hacker' && 'Input' in elements ? elements.Input : undefined
+    const keyField =
+      Input === undefined ? null : (
+        <Input
+          key={KEYS}
+          value=""
+          placeholder={e.props.isFocused ? 'mash any key…' : 'focus the pane (click, or ctrl+x tab) and type'}
+          submitLabel="type"
+          autoFocus
+          onSubmit={() => undefined}
+        />
+      )
 
     if (job === null) {
       return (
         <Box flexDirection="column">
           <Text bold>Ghost Typist</Text>
           <Text dimColor>Waiting for the agent to write some code…</Text>
+          {keyField}
         </Box>
       )
     }
 
     const columns = Math.max(20, e.props.bodyColumns - 6)
-    const room = Math.max(3, e.props.scroll.bodyRows - 4)
+    const room = Math.max(3, e.props.scroll.bodyRows - (keyField === null ? 4 : 6))
     const isTyping = !job.isStreamDone || job.text.length < job.total
     // Keep the cursor in view: the tail of the text that fits, counting wrapped rows.
     const lines = job.text.split('\n')
@@ -279,9 +364,10 @@ export const register: Register = (on, options) => {
           startLine={job.path !== undefined && job.tool === 'Write' ? first + 1 : undefined}
         />
         <Text dimColor>
-          {isTyping ? 'typing' : 'done'} · {job.wpm} WPM · {pct}%
-          {queued > 0 ? ` · ${queued} queued` : ''}
+          {isTyping ? (Input === undefined ? 'typing' : 'hacker mode') : 'done'} · {job.wpm} WPM ·{' '}
+          {pct}%{queued > 0 ? ` · ${queued} queued` : ''}
         </Text>
+        {keyField}
       </Box>
     )
   })

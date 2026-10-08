@@ -14,6 +14,7 @@ export type GhostSettings = {
   isEnabled: boolean
   wpm?: number
   sound?: 'clicky' | 'thock' | 'off'
+  mode?: 'watch' | 'hacker'
 }
 
 declare module 'claude-code' {

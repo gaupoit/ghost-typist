@@ -1,3 +1,4 @@
+import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 const PANE = {
@@ -24,8 +25,7 @@ test('pane waits for code on every surface', async $ => {
   }
 })
 
-test('types out a Write call streamed by the model', async ($, on) => {
-  const clock = mock.clock(on)
+const fakeModel = (on: On) => {
   on('ui.open', async () => ({ value: { isPlaced: true } }))
   on('ui.status', async () => ({ value: undefined }))
   on('audio.play', async () => ({ value: undefined }))
@@ -36,7 +36,11 @@ test('types out a Write call streamed by the model', async ($, on) => {
     yield { kind: 'stop', stopReason: 'tool_use', usage: null }
     return { turnId: 't', index: 0, answer: '', toolUses: [], stopReason: 'tool_use', usage: null }
   })
+}
 
+test('types out a Write call streamed by the model', async ($, on) => {
+  const clock = mock.clock(on)
+  fakeModel(on)
   const stream = $.turn.step({ turnId: 't', index: 0, model: 'm', messageCount: 1 })
   const seen: string[] = []
   for await (const chunk of stream) seen.push(chunk.kind)
@@ -51,4 +55,33 @@ test('types out a Write call streamed by the model', async ($, on) => {
     expect(await ui.find({ type: 'Text', text: /done · \d+ WPM · 100%/ })).toBeDefined()
     await ui.unmount()
   }
+})
+
+test('hacker mode waits for keys, then types a few characters per key', { options: { mode: 'hacker' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  fakeModel(on)
+  for await (const _ of $.turn.step({ turnId: 't', index: 0, model: 'm', messageCount: 1 })) {
+    // drain the stream
+  }
+
+  // Time alone types nothing in hacker mode.
+  await clock.advance(5000)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /hacker mode · \d+ WPM · 0%/ })).toBeDefined()
+
+  for (let i = 0; i < 3; i += 1) {
+    await ui.input({ key: 'keys', text: 'x'.repeat(i + 1), kind: 'change' })
+  }
+  await clock.advance(100)
+  const footer = await ui.find({ type: 'Text', text: /hacker mode · \d+ WPM · \d+%/ })
+  const pct = Number(/(\d+)%/.exec(footer?.text ?? '')?.[1])
+  // 3 keys at 3 to 5 characters each, of a 29-character file.
+  expect(pct).toBeGreaterThanOrEqual(31)
+  expect(pct).toBeLessThanOrEqual(52)
+
+  // Enough keys finish the file.
+  for (let i = 0; i < 20; i += 1) await ui.input({ key: 'keys', text: 'x', kind: 'submit' })
+  await clock.advance(100)
+  expect(await ui.find({ type: 'Text', text: /done · \d+ WPM · 100%/ })).toBeDefined()
+  await ui.unmount()
 })

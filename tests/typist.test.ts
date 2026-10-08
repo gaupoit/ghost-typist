@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { advance, charCost, DEFAULT_PACE, measuredWpm } from '../hooks/typist'
+import { advance, charCost, DEFAULT_PACE, measuredWpm, revealForKeys } from '../hooks/typist'
 
 const half = () => 0.5
 const TEXT = 'const answer = 42;\nconsole.log(answer);\n'.repeat(10)
@@ -41,4 +41,17 @@ test('indentation costs almost nothing, newlines cost more', async () => {
 test('measures words per minute', async () => {
   expect(measuredWpm(500, 60_000)).toBe(100)
   expect(measuredWpm(10, 0)).toBe(0)
+})
+
+test('hacker mode reveals 3 to 5 characters per key', async () => {
+  const text = 'abcdefghijklmnopqrstuvwxyz'
+  expect(revealForKeys(text, 0, 1, () => 0)).toBe(3)
+  expect(revealForKeys(text, 0, 1, () => 0.99)).toBe(5)
+  expect(revealForKeys(text, 0, 2, () => 0)).toBe(6)
+  expect(revealForKeys(text, 24, 5, () => 0.5)).toBe(26)
+})
+
+test('hacker mode skips indentation after a newline', async () => {
+  const text = 'ab\n        c'
+  expect(revealForKeys(text, 0, 1, () => 0)).toBe(11)
 })
