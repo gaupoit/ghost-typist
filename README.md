@@ -4,7 +4,8 @@ A Claude Code mod that makes it feel like you are typing while the agent codes.
 
 When the agent calls `Write`, `Edit`, `MultiEdit`, `NotebookEdit` or `Bash`, Ghost Typist
 catches the code in the model's stream *as it is generated* and types it out in a side
-pane at a human pace, with a cursor and keyboard sounds.
+pane at a human pace, with a cursor and keyboard sounds. A keyboard under the code
+lights up the key of each character as it is typed.
 
 It only shows things: the agent never waits for the typing.
 
@@ -31,16 +32,25 @@ The pane opens on its own when the agent starts writing, on a terminal at least
 | `/typist mode watch` | Back to typing by itself |
 | `/typist speed 140` | Base speed in words per minute |
 | `/typist sound clicky` | `clicky`, `thock` or `off` |
+| `/typist keyboard off` | Hide the on-screen keyboard (`on` brings it back) |
 | `/typist status` | Show the current settings |
 
-Defaults are in `/config` (mode, speed, sound, which tools to type, auto-open).
+Defaults are in `/config` (mode, speed, sound, keyboard, which tools to type, auto-open).
+
+## The keyboard
+
+A US keyboard sits at the bottom of the pane. As each character is typed, its key lights
+up, with shift held for capitals and symbols like `{` or `"`, and Enter at the end of a line.
+Indentation lights nothing, since your editor would have typed it. Narrow panes get a compact
+keyboard; panes under 16 rows hide it.
 
 ## Hacker Typer mode
 
 `/typist mode hacker` opens the pane with the keyboard in it. Every letter or digit key
 you press types the next 3 to 5 characters of the agent's code (indentation comes for free). Stop
 pressing and the code waits for you. When the agent starts its next call, the one you
-were on finishes by itself, so you never fall behind. Esc returns to the prompt; click
+were on finishes by itself, so you never fall behind. The keyboard lights the keys of the
+code that appears, not the keys you pressed: you mash `asdf` and it shows you typing `const`. Esc returns to the prompt; click
 the pane or press ctrl+x tab to come back.
 
 ## How it works

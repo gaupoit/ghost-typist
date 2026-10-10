@@ -1,8 +1,9 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, Timer } from 'claude-code'
+import type { Elements, EngineInterface, Register, Timer } from 'claude-code'
 
 import type { GhostJob, GhostSettings } from '../types'
 import { readToolText, TOOL_FIELDS } from './extract'
+import { litKeys, ROWS } from './keyboard'
 import { advance, DEFAULT_PACE, measuredWpm, revealForKeys } from './typist'
 import type { Progress } from './typist'
 
@@ -18,6 +19,15 @@ const MODES = ['watch', 'hacker'] as const
 type Mode = (typeof MODES)[number]
 // In hacker mode the clicks stop this long after the last key.
 const KEY_SOUND_MS = 250
+// A lit key stays lit this many ticks after its character, so slow typing
+// does not flicker.
+const LIT_TICKS = 5
+// The keyboard is drawn only in a pane at least this tall, and wide keys only
+// in a pane at least this wide.
+const KEYBOARD_MIN_ROWS = 16
+const KEYBOARD_MIN_COLUMNS = { narrow: 34, wide: 50 }
+// Its rows, with the border.
+const KEYBOARD_ROWS = 7
 
 const jobAtom = atom({ plugin: 'ghost-typist', key: 'job' } as const, null)
 const queuedAtom = atom({ plugin: 'ghost-typist', key: 'queued' } as const, 0)
@@ -36,11 +46,20 @@ type Pending = {
   isStreamDone: boolean
   progress: Progress
   typingMs: number
+  lit: string[]
+  litTicks: number
 }
 
 const basename = (path: string) => path.split('/').at(-1) ?? path
 
-type Defaults = { wpm: number; sound: Sound; mode: Mode; tools: Set<string>; autoOpen: boolean }
+type Defaults = {
+  wpm: number
+  sound: Sound
+  mode: Mode
+  tools: Set<string>
+  autoOpen: boolean
+  keyboard: boolean
+}
 
 let defaults: Defaults = {
   wpm: DEFAULT_PACE.wpm,
@@ -48,6 +67,7 @@ let defaults: Defaults = {
   mode: 'watch',
   tools: new Set(Object.keys(TOOL_FIELDS)),
   autoOpen: true,
+  keyboard: true,
 }
 const queue: Pending[] = []
 let ticker: Timer | undefined
@@ -61,6 +81,7 @@ const settingsOf = (s: GhostSettings) => ({
   wpm: s.wpm ?? defaults.wpm,
   sound: s.sound ?? defaults.sound,
   mode: s.mode ?? defaults.mode,
+  keyboard: s.keyboard ?? defaults.keyboard,
 })
 
 function setSound($: EngineInterface, isTyping: boolean, kind: Sound) {
@@ -90,6 +111,18 @@ function parse(job: Pending) {
   job.parsedLength = job.raw.length
 }
 
+// Lights the keys for the characters typed since `before`, or lets the last
+// ones fade when nothing new was typed.
+function light(job: Pending, before: number) {
+  if (job.progress.shown > before) {
+    job.lit = litKeys(job.text, before, job.progress.shown)
+    job.litTicks = LIT_TICKS
+  } else if (job.litTicks > 0) {
+    job.litTicks -= 1
+    if (job.litTicks === 0) job.lit = []
+  }
+}
+
 // Shows the job's progress, and moves on once it is fully typed.
 async function publish($: EngineInterface, job: Pending, mode: Mode) {
   const isFinished = job.isStreamDone && job.progress.shown >= job.text.length
@@ -106,6 +139,7 @@ async function publish($: EngineInterface, job: Pending, mode: Mode) {
     total: job.text.length,
     isStreamDone: job.isStreamDone,
     wpm: measuredWpm(job.progress.shown, job.typingMs),
+    keys: isFinished ? [] : job.lit,
   }
   await update($, jobAtom, () => snapshot)
   await update($, queuedAtom, () => Math.max(0, queue.length - 1))
@@ -125,16 +159,17 @@ async function tick($: EngineInterface) {
   const settings = settingsOf(await read($, settingsAtom))
   // Hacker mode waits for keys, unless another call is waiting behind this one.
   const isAuto = settings.mode === 'watch' || queue.length > 1
+  const before = job.progress.shown
   if (isAuto) {
     const pace = {
       ...DEFAULT_PACE,
       wpm: settings.wpm,
       finishWithinMs: queue.length > 1 ? 500 : DEFAULT_PACE.finishWithinMs,
     }
-    const before = job.progress.shown
     job.progress = advance(job.text, job.progress, TICK_MS, job.isStreamDone, pace, Math.random)
     if (job.progress.shown > before) job.typingMs += TICK_MS
   }
+  light(job, before)
   if (settings.mode === 'watch') {
     setSound($, job.progress.shown < job.text.length, settings.sound)
   }
@@ -153,6 +188,7 @@ async function pressKeys($: EngineInterface, presses: number) {
   job.progress = { ...job.progress, shown: revealForKeys(job.text, before, presses, Math.random) }
   // Count about one keystroke's time per press, so the footer shows a real WPM.
   job.typingMs += presses * 120
+  light(job, before)
 
   setSound($, job.progress.shown > before, settings.sound)
   soundOff?.cancel()
@@ -174,6 +210,42 @@ function ensureTicker($: EngineInterface) {
   })
 }
 
+// Each row is indented a little more, like a real keyboard's stagger.
+const STAGGER = { wide: [0, 1, 2, 3], narrow: [0, 1, 1, 2] }
+
+// The on-screen keyboard, with the keys in `lit` drawn pressed. A wide pane
+// gets three columns a key, a narrow one two.
+function drawKeyboard(elements: Pick<Elements['terminal'], 'Box' | 'Text'>, lit: string[], isWide: boolean) {
+  const { Box, Text } = elements
+  const on = new Set(lit)
+  const width = isWide ? 3 : 2
+  const cap = (id: string, label: string, i: string) => {
+    const face = isWide ? ` ${label} ` : `${label} `
+    return on.has(id) ? (
+      <Text key={i} inverse bold color="claude">
+        {face}
+      </Text>
+    ) : (
+      // The space bar is underlined so it reads as a bar, not a word.
+      <Text key={i} dimColor underline={id === 'space'}>
+        {face}
+      </Text>
+    )
+  }
+
+  return (
+    <Box flexDirection="column" alignSelf="flex-start" borderStyle="round" borderDimColor paddingX={1}>
+      {ROWS.slice(0, -1).map((row, r) => (
+        <Box key={`row-${r}`} flexDirection="row" paddingLeft={STAGGER[isWide ? 'wide' : 'narrow'][r]}>
+          {row.map((k, i) => cap(k.id, k.label, `${r}-${i}`))}
+        </Box>
+      ))}
+      <Box flexDirection="row" paddingLeft={width * 4}>
+        {cap('space', isWide ? '        space        ' : '   space   ', 'space')}
+      </Box>
+    </Box>
+  )
+}
 
 export const register: Register = (on, options) => {
   defaults = {
@@ -187,12 +259,14 @@ export const register: Register = (on, options) => {
     ),
     mode: (MODES.includes(options.mode as Mode) ? options.mode : 'watch') as Mode,
     autoOpen: options.autoOpen !== false,
+    keyboard: options.keyboard !== false,
   }
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'typist',
-      description: 'Ghost Typist: open the pane, or on | off | mode watch|hacker | speed <wpm> | sound clicky|thock|off',
+      description:
+        'Ghost Typist: open the pane, or on | off | mode watch|hacker | keyboard on|off | speed <wpm> | sound clicky|thock|off',
     })
 
     return next(e)
@@ -231,6 +305,13 @@ export const register: Register = (on, options) => {
       }
       return { text: 'Watch mode: Ghost Typist types by itself.' }
     }
+    if (word === 'keyboard') {
+      if (value !== 'on' && value !== 'off') {
+        return { text: `Keyboard is on or off (now ${current.keyboard ? 'on' : 'off'}).` }
+      }
+      await update($, settingsAtom, s => ({ ...s, keyboard: value === 'on' }))
+      return { text: `Ghost Typist keyboard ${value}.` }
+    }
     if (word === 'sound') {
       if (!SOUNDS.includes(value as Sound)) {
         return { text: `Sound is one of ${SOUNDS.join(', ')} (now ${current.sound}).` }
@@ -241,7 +322,7 @@ export const register: Register = (on, options) => {
     }
 
     return {
-      text: `Ghost Typist is ${current.isEnabled ? 'on' : 'off'} · ${current.mode} mode · ${current.wpm} WPM · sound ${current.sound}. Usage: /typist [open | on | off | mode watch|hacker | speed <wpm> | sound clicky|thock|off]`,
+      text: `Ghost Typist is ${current.isEnabled ? 'on' : 'off'} · ${current.mode} mode · ${current.wpm} WPM · sound ${current.sound} · keyboard ${current.keyboard ? 'on' : 'off'}. Usage: /typist [open | on | off | mode watch|hacker | keyboard on|off | speed <wpm> | sound clicky|thock|off]`,
     }
   })
 
@@ -270,6 +351,8 @@ export const register: Register = (on, options) => {
               isStreamDone: false,
               progress: { shown: 0, carry: 0 },
               typingMs: 0,
+              lit: [],
+              litTicks: 0,
             }
             byIndex.set(chunk.index, job)
             queue.push(job)
@@ -309,7 +392,7 @@ export const register: Register = (on, options) => {
     const { Box, Text, Code } = elements
     const job = await read($, jobAtom)
     const queued = await read($, queuedAtom)
-    const { mode } = settingsOf(await read($, settingsAtom))
+    const { mode, keyboard } = settingsOf(await read($, settingsAtom))
     // Surfaces without buttons stay in watch mode.
     const Button = mode === 'hacker' && 'Button' in elements ? elements.Button : undefined
     const keyField =
@@ -331,13 +414,23 @@ export const register: Register = (on, options) => {
         <Box flexDirection="column">
           <Text bold>Ghost Typist</Text>
           <Text dimColor>Waiting for the agent to write some code…</Text>
+          {keyboard && e.props.bodyColumns >= KEYBOARD_MIN_COLUMNS.narrow
+            ? drawKeyboard(elements, [], e.props.bodyColumns >= KEYBOARD_MIN_COLUMNS.wide)
+            : null}
           {keyField}
         </Box>
       )
     }
 
     const columns = Math.max(20, e.props.bodyColumns - 6)
-    const room = Math.max(3, e.props.scroll.bodyRows - (keyField === null ? 4 : 6))
+    const showsKeyboard =
+      keyboard &&
+      e.props.scroll.bodyRows >= KEYBOARD_MIN_ROWS &&
+      e.props.bodyColumns >= KEYBOARD_MIN_COLUMNS.narrow
+    const room = Math.max(
+      3,
+      e.props.scroll.bodyRows - (keyField === null ? 4 : 6) - (showsKeyboard ? KEYBOARD_ROWS : 0),
+    )
     const isTyping = !job.isStreamDone || job.text.length < job.total
     // Keep the cursor in view: the tail of the text that fits, counting wrapped rows.
     const lines = job.text.split('\n')
@@ -352,8 +445,10 @@ export const register: Register = (on, options) => {
     const source = lines.slice(first).join('\n') + (isTyping ? '▌' : '')
     const pct = job.total === 0 ? 0 : Math.round((job.text.length / job.total) * 100)
 
+    // With a keyboard, the pane fills its height so the keyboard sits at the
+    // bottom and stays put while the code grows above it.
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" height={showsKeyboard ? e.props.scroll.bodyRows : undefined}>
         <Box flexDirection="row" gap={1}>
           <Text bold color="claude">
             {job.tool}
@@ -366,10 +461,12 @@ export const register: Register = (on, options) => {
           language={job.tool === 'Bash' ? 'bash' : undefined}
           startLine={job.path !== undefined && job.tool === 'Write' ? first + 1 : undefined}
         />
+        {showsKeyboard ? <Box flexGrow={1} /> : null}
         <Text dimColor>
           {isTyping ? (Button === undefined ? 'typing' : 'hacker mode') : 'done'} · {job.wpm} WPM ·{' '}
           {pct}%{queued > 0 ? ` · ${queued} queued` : ''}
         </Text>
+        {showsKeyboard ? drawKeyboard(elements, job.keys, e.props.bodyColumns >= KEYBOARD_MIN_COLUMNS.wide) : null}
         {keyField}
       </Box>
     )

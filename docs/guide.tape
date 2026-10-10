@@ -84,5 +84,6 @@ Show
 Type "# /typist                open the pane" Enter
 Type "# /typist mode hacker    every letter you press types the code the agent writes" Enter
 Type "# /typist sound thock    clicky, thock or off" Enter
+Type "# /typist keyboard off   hide the keyboard" Enter
 Type "# github.com/gaupoit/ghost-typist" Enter
 Sleep 4s
