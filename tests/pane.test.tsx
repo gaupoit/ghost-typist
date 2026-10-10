@@ -48,13 +48,44 @@ test('types out a Write call streamed by the model', async ($, on) => {
   expect(seen[0]).toBe('tool')
   expect(seen.at(-1)).toBe('stop')
 
+  // Mid-file, the keyboard shows the key of a character just typed.
+  await clock.advance(1_000)
+  const typing = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await typing.find({ type: 'Text', text: /space/ })).toBeDefined()
+  const caps = await typing.findAll({ type: 'Text', text: /^ ?\S+ $|space/ })
+  const lit = caps.filter(c => c.props.inverse === true)
+  expect(lit.length).toBeGreaterThan(0)
+  expect(lit.length).toBeLessThanOrEqual(3)
+  await typing.unmount()
+
   await clock.advance(10_000)
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ type: 'Text', text: '/src/hello.ts' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /done · \d+ WPM · 100%/ })).toBeDefined()
+    // Finished: no key stays pressed.
+    const caps = await ui.findAll({ type: 'Text' })
+    expect(caps.filter(c => c.props.inverse === true)).toHaveLength(0)
     await ui.unmount()
   }
+})
+
+test('the keyboard can be turned off', async ($, on) => {
+  const clock = mock.clock(on)
+  fakeModel(on)
+  await $.command.run({
+    command: 'typist',
+    args: 'keyboard off',
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: false, columns: 160 },
+  })
+  for await (const _ of $.turn.step({ turnId: 't', index: 0, model: 'm', messageCount: 1 })) {
+    // drain the stream
+  }
+  await clock.advance(1_000)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /space/ })).toBeUndefined()
+  await ui.unmount()
 })
 
 test('hacker mode waits for keys, then types a few characters per key', { options: { mode: 'hacker' } }, async ($, on) => {

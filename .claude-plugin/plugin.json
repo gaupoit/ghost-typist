@@ -1,6 +1,6 @@
 {
   "name": "ghost-typist",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Types out the code the agent writes, live, in a side pane with keyboard sounds",
   "author": {
     "name": "Paul"
@@ -46,6 +46,12 @@
         "hacker"
       ],
       "default": "watch"
+    },
+    "keyboard": {
+      "type": "boolean",
+      "title": "Show the keyboard",
+      "description": "Draw a keyboard under the code whose keys light up as each character is typed",
+      "default": true
     }
   }
 }
