@@ -8,6 +8,8 @@ export type GhostJob = {
   total: number
   isStreamDone: boolean
   wpm: number
+  // Keys lit on the on-screen keyboard (ids from ROWS).
+  keys: string[]
 }
 
 export type GhostSettings = {
@@ -15,6 +17,7 @@ export type GhostSettings = {
   wpm?: number
   sound?: 'clicky' | 'thock' | 'off'
   mode?: 'watch' | 'hacker'
+  keyboard?: boolean
 }
 
 declare module 'claude-code' {
